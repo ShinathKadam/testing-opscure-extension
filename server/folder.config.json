@@ -1,0 +1,14 @@
+{
+  "folders": [
+    {
+      "id": "1770124852927",
+      "label": "App Logs",
+      "path": "E:/logs"
+    },
+    {
+      "id": "1770124885686",
+      "label": "Testing multiple path",
+      "path": "C:/logs"
+    }
+  ]
+}

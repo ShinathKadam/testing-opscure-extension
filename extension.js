@@ -104,9 +104,25 @@ function activate(context) {
   );
 
   try {
-    const isWin = process.platform === "win32";
-    const goAgentBinary = isWin ? "go-agent.exe" : "go-agent";
+    const platform = process.platform;
+    const arch = process.arch;
+
+    let goAgentBinary;
+
+    if (platform === "win32") {
+      goAgentBinary = "go-agent-window.exe";
+    } else if (platform === "darwin" && arch === "arm64") {
+      goAgentBinary = "go-agent-mac-arm";
+    } else if (platform === "darwin") {
+      goAgentBinary = "go-agent-mac";
+    } else if (platform === "linux") {
+      goAgentBinary = "go-agent-linux";
+    } else {
+      goAgentBinary = "go-agent-bsd";
+    }
+
     const goAgentPath = path.join(context.extensionPath, "server", goAgentBinary);
+
     const goAgentCwd = path.join(context.extensionPath, "server", "go_agent");
 
     goAgentProcess = spawn(goAgentPath, [], {
@@ -337,48 +353,64 @@ class LogFetcherViewProvider {
   }
 
   async sendForAnalyze() {
-    if (!AGENT_BASE) {
-      vscode.window.showWarningMessage("Agent not ready yet.");
-      return;
-    }
-    if (!this.rawBundles.length) return;
-    const sequence = [];
-    this.rawBundles.forEach(b => {
-      const seq = b.Sequence || b.sequence;
-      if (Array.isArray(seq)) {
-        seq.forEach(item => {
-          if (item?.Data) {
-            sequence.push({ Data: item.Data });
-          }
-        });
-      }
-    });
-    if (!sequence.length) return;
-    const today = new Date();
-    const dateStr = String(today.getDate()).padStart(2, "0") + String(today.getMonth() + 1).padStart(2, "0") + today.getFullYear();
-    const bundleId = `bundle${dateStr}_${String(this.bundleCounter++).padStart(2, "0")}`;
-    const workspace = vscode.workspace.rootPath;
-    const gitConfig = workspace ? getGitConfig(workspace) : null;
-    const requestBody = {
-      bundle: {
-        id: bundleId,
-        Sequence: sequence,
-        git_config: gitConfig
-      }
-    };
-
-    try {
-      const res = await axios.post(`${AGENT_BASE}/logs/preprocess`, requestBody, { headers: { "Content-Type": "application/json" } });
-      this.lastAnalyzeResponse = res.data;
-      
-      // LOG TRAFFIC FOR TESTING
-      this.postApiTraffic("/logs/preprocess", requestBody, res.data);
-      
-      this.view?.webview.postMessage({ type: "analyzeResponse", data: res.data });
-    } catch (e) {
-      this.postApiTraffic("/logs/preprocess (ERROR)", requestBody, e.response?.data || e.message);
-    }
+  if (!AGENT_BASE) {
+    vscode.window.showWarningMessage("Agent not ready yet.");
+    return;
   }
+
+  if (!this.rawBundles.length) return;
+
+  // 👉 Use the latest flushed bundle from agent
+  const latestBundle = this.rawBundles[this.rawBundles.length - 1];
+  if (!latestBundle) return;
+
+  const today = new Date();
+  const dateStr =
+    String(today.getDate()).padStart(2, "0") +
+    String(today.getMonth() + 1).padStart(2, "0") +
+    today.getFullYear();
+
+  const bundleId = `bundle${dateStr}_${String(this.bundleCounter++).padStart(2, "0")}`;
+
+  const workspace = vscode.workspace.rootPath;
+  const gitConfig = workspace ? getGitConfig(workspace) : null;
+
+  // 👉 Remove agent meta fields before sending
+  const { status, accepted, flush_reason, ...cleanBundle } = latestBundle;
+
+  const requestBody = {
+    bundle: {
+      ...cleanBundle,
+      id: bundleId,
+      git_config: gitConfig
+    }
+  };
+
+  try {
+    const res = await axios.post(
+      `${AGENT_BASE}/logs/preprocess`,
+      requestBody,
+      { headers: { "Content-Type": "application/json" } }
+    );
+
+    this.lastAnalyzeResponse = res.data;
+
+    // LOG TRAFFIC FOR TESTING
+    this.postApiTraffic("/logs/preprocess", requestBody, res.data);
+
+    this.view?.webview.postMessage({
+      type: "analyzeResponse",
+      data: res.data
+    });
+
+  } catch (e) {
+    this.postApiTraffic(
+      "/logs/preprocess (ERROR)",
+      requestBody,
+      e.response?.data || e.message
+    );
+  }
+}
 
   getHtml() {
     return `<!DOCTYPE html>
@@ -1142,28 +1174,39 @@ function detectSeverity(text) {
 
 async function sendBatch(payload, provider) {
   if (!AGENT_BASE) return;
+
   try {
-    const res = await axios.post(`${AGENT_BASE}/stream/ingest`, payload, { headers: { "Content-Type": "application/json" } });
-    
+    const res = await axios.post(
+      `${AGENT_BASE}/stream/ingest`,
+      payload,
+      { headers: { "Content-Type": "application/json" } }
+    );
+
     // LOG TRAFFIC FOR TESTING
     provider.postApiTraffic("/stream/ingest", payload, res.data);
 
-    if (res.data?.bundle) {
-      provider.storeBundle(res.data.bundle);
+    // 👉 Only act when agent flushes a bundle
+    if (!res.data?.bundle) {
+      return; // still buffering — no diagnostics button
     }
-    const seq = res.data?.bundle?.Sequence || res.data?.bundle?.sequence || [];
-    seq.forEach(item => {
-      const d = item.Data || item.data;
-      if (!d) return;
-      provider.postParsedLog({
-        severity: d.level || "INFO",
-        message: d.message || "",
-        service: d.service || "unknown",
-        timestamp: d.timestamp || new Date().toISOString()
-      });
+
+    // Store flushed incident bundle
+    provider.storeBundle(res.data.bundle);
+
+    // Trigger UI to show RUN DIAGNOSTICS
+    provider.postParsedLog({
+      severity: "INFO",
+      message: "Incident detected — bundle flushed by agent",
+      service: res.data.bundle.rootService || "agent",
+      timestamp: new Date().toISOString()
     });
+
   } catch (e) {
-    provider.postApiTraffic("/stream/ingest (ERROR)", payload, e.message);
+    provider.postApiTraffic(
+      "/stream/ingest (ERROR)",
+      payload,
+      e.message
+    );
   }
 }
 
