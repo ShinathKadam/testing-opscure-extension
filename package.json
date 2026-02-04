@@ -1,35 +1,66 @@
 {
-  "name": "vscode-log-fetcher",
-  "publisher": "shrinatech",
-  "displayName": "OPSCURE",
-  "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.95.0"
-  },
-  "enabledApiProposals": ["terminalDataWriteEvent"],
-  "main": "./extension.js",
-  "activationEvents": ["*"],
-  "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "logFetcherContainer",
-          "title": "OPSCURE",
-           "icon": "media/icon.svg"
-        }
-      ]
+    "name": "opscure-production",
+    "publisher": "shrinathkadam",
+    "displayName": "OPSCURE Production",
+    "license": "SEE LICENSE IN LICENSE",
+    "version": "1.0.5",
+    "engines": {
+        "vscode": "^1.95.0"
     },
-    "views": {
-      "logFetcherContainer": [
-        {
-          "id": "logFetcherView",
-          "name": "OPSCURE",
-          "type": "webview"
+    "main": "./extension.js",
+    "enableProposedApi": true,
+    "activationEvents": [
+        "onView:logFetcherView"
+    ],
+    "contributes": {
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "logFetcherContainer",
+                    "title": "OPSCURE",
+                    "icon": "media/icon.svg"
+                }
+            ]
+        },
+        "views": {
+            "logFetcherContainer": [
+                {
+                    "id": "logFetcherView",
+                    "name": "OPSCURE",
+                    "type": "webview",
+                    "when": "!opscure.showFolderManager"
+                },
+                {
+                    "id": "folderManagerView",
+                    "name": "Folder Manager",
+                    "type": "webview",
+                    "when": "opscure.showFolderManager"
+                }
+            ]
+        },
+        "commands": [
+            {
+                "command": "opscure.runWithOpscure",
+                "title": "OPSCURE: Run with OPSCURE"
+            },
+            {
+                "command": "opscure.openFolderManager",
+                "title": "OPSCURE: Manage Log Folders",
+                "icon": "$(gear)"
+            }
+        ],
+        "menus": {
+            "view/title": [
+                {
+                    "command": "opscure.openFolderManager",
+                    "when": "view == logFetcherView",
+                    "group": "navigation"
+                }
+            ]
         }
-      ]
+    },
+    "dependencies": {
+        "axios": "^1.13.2",
+        "eventsource": "^4.1.0"
     }
-  },
-  "dependencies": {
-    "axios": "^1.13.2"
-  }
 }
