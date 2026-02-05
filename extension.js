@@ -122,6 +122,13 @@ function activate(context) {
     }
 
     const goAgentPath = path.join(context.extensionPath, "server", goAgentBinary);
+    // --- macOS/Linux executable fix (auto) ---
+    if (process.platform !== "win32") {
+      try {
+        execSync(`chmod +x "${goAgentPath}"`);
+        execSync(`xattr -d com.apple.quarantine "${goAgentPath}"`, { stdio: "ignore" });
+      } catch {}
+    }
 
     const goAgentCwd = path.join(context.extensionPath, "server", "go_agent");
 
@@ -702,22 +709,6 @@ class LogFetcherViewProvider {
         <div class="title">OPSCURE // TACTICAL_DECK</div>
         <div class="status">LINK_ESTABLISHED</div>
       </div>
-
-      <div class="header-controls">
-        <span class="prompt">$</span>
-
-        <div class="select-wrap">
-          <select id="folderSelect"></select>
-        </div>
-
-        <button id="startBtn" class="btn-primary" onclick="start()" disabled>
-          ▶ EXECUTE
-        </button>
-
-        <button class="btn-halt" onclick="stopLogs()">
-          ■ HALT
-        </button>
-      </div>
     </header>
 
     <div class="main-deck">
@@ -734,6 +725,27 @@ class LogFetcherViewProvider {
             <button id="scanBtn" class="btn-wow" style="width:100%; margin:0; display:none;" onclick="runScan()">INITIATE SCAN</button>
         </div>
       </div>
+
+        <!-- FOLDER SELECTION BAR -->
+        <div class="panel folder-bar">
+          <div class="panel-label">// LOG_SOURCE_CONTROL</div>
+
+          <div class="folder-controls">
+            <span class="prompt">$</span>
+
+            <div class="select-wrap">
+              <select id="folderSelect"></select>
+            </div>
+
+            <button id="startBtn" class="btn-primary" onclick="start()" disabled>
+              ▶ EXECUTE
+            </button>
+
+            <button class="btn-halt" onclick="stopLogs()">
+              ■ HALT
+            </button>
+          </div>
+        </div>
 
       <div class="panel panel-comms">
         <div class="panel-label">// COMMS_STREAM</div>
